@@ -362,4 +362,5 @@ Copyright 2016 Chris Hafey [chafey@gmail.com](mailto:chafey@gmail.com)
 
 Update by zssure
 ============
-2017.11.01, try to resolve parsing dicom file which has no metainformation and the transfer syntax is '1.2.840.10008.1.2'
+2017.11.01, try to resolve parsing dicom file which has no metainformation and the transfer syntax is '1.2.840.10008.1.2'.
+			and you must edit the file 'cornerstoneWADOImageLoader' simultaneously by editing the function 'decodeTransferSyntax' at line 1003.
