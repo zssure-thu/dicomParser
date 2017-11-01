@@ -47,11 +47,6 @@ var dicomParser = (function(dicomParser) {
         }
 
         function readTransferSyntax(metaHeaderDataSet) {
-			//zssure:2017.11.01
-			//ignore the dicom file which has no metainformaiton
-			if(metaHeaderDataSet == null)
-				return '1.2.840.10008.1.2';
-			//zssure:2017.11.01
             if(metaHeaderDataSet.elements.x00020010 === undefined) {
                 throw 'dicomParser.parseDicom: missing required meta header attribute 0002,0010';
             }
@@ -122,11 +117,6 @@ var dicomParser = (function(dicomParser) {
 
         function mergeDataSets(metaHeaderDataSet, instanceDataSet)
         {
-			//zssure:2017.11.01
-			//ignore the dicom file which has no metainformaiton
-			if(metaHeaderDataSet == null)
-				return instanceDataSet;
-			//zssure:2017.11.01
             for (var propertyName in metaHeaderDataSet.elements)
             {
                 if(metaHeaderDataSet.elements.hasOwnProperty(propertyName))
@@ -142,9 +132,16 @@ var dicomParser = (function(dicomParser) {
 
         function readDataSet(metaHeaderDataSet)
         {
-            var transferSyntax = readTransferSyntax(metaHeaderDataSet);
-            var explicit = isExplicit(transferSyntax);
-            var dataSetByteStream = getDataSetByteStream(transferSyntax, metaHeaderDataSet!=null?metaHeaderDataSet.position:0);
+			var transferSyntax = '1.2.840.10008.1.2.1';
+            var explicit = false;
+			var lmOffset = 0;
+			if(metaHeaderDataSet != null)
+			{
+			    transferSyntax = readTransferSyntax(metaHeaderDataSet);
+                explicit = isExplicit(transferSyntax);
+				lmOffset = metaHeaderDataSet.position;
+			}
+            var dataSetByteStream = getDataSetByteStream(transferSyntax, lmOffset);
 
             var elements = {};
             var dataSet = new dicomParser.DataSet(dataSetByteStream.byteArrayParser, dataSetByteStream.byteArray, elements);
@@ -2291,55 +2288,48 @@ var dicomParser = (function(dicomParser) {
 
     function readPrefix()
     {
-	  //zssure:2017.11.01
-	  //ignore the dicom file which has no metaInforamtion
-	  if(littleEndianByteStream.byteArray[0]!=0)
-		  return;
-	  //zssure:2017.11.01 end 
-      littleEndianByteStream.seek(128);
-      var prefix = littleEndianByteStream.readFixedString(4);
-      if(prefix !== "DICM")
+	  if(littleEndianByteStream.byteArray[0]== 0)
       {
-        throw "dicomParser.readPart10Header: DICM prefix not found at location 132 - this is not a valid DICOM P10 file.";
-      }
+		  littleEndianByteStream.seek(128);
+		  var prefix = littleEndianByteStream.readFixedString(4);
+		  if(prefix !== "DICM")
+          {
+			throw "dicomParser.readPart10Header: DICM prefix not found at location 132 - this is not a valid DICOM P10 file.";
+          }
+	  }
     }
 
     // main function here
     function readTheHeader() {
       // Per the DICOM standard, the header is always encoded in Explicit VR Little Endian (see PS3.10, section 7.1)
       // so use littleEndianByteStream throughout this method regardless of the transfer syntax
-      readPrefix();
-
+	  //if(littleEndianByteStream.byteArray[0]!= 0)
+      //{
+	  //  return;
+	  //}
+	  readPrefix();
       var warnings = [];
       var elements = {};
-	  //zssure:2017.11.01
-	  //ignore the dicom file which has no metaInforamtion
-	  if(littleEndianByteStream.position != undefined && littleEndianByteStream.position != 0)
+      while(littleEndianByteStream.position < littleEndianByteStream.byteArray.length) {
+        var position = littleEndianByteStream.position;
+        var element = dicomParser.readDicomElementExplicit(littleEndianByteStream, warnings);
+        if(element.tag > 'x0002ffff') {
+          littleEndianByteStream.position = position;
+          break;
+        }
+        // Cache the littleEndianByteArrayParser for meta header elements, since the rest of the data set may be big endian
+        // and this parser will be needed later if the meta header values are to be read.
+        element.parser = dicomParser.littleEndianByteArrayParser;
+        elements[element.tag] = element;
+      }
+	  if(littleEndianByteStream.position == 0)
 	  {
-		 while(littleEndianByteStream.position < littleEndianByteStream.byteArray.length) {
-			var position = littleEndianByteStream.position;
-			var element = dicomParser.readDicomElementExplicit(littleEndianByteStream, warnings);
-			if(element.tag > 'x0002ffff') {
-			  littleEndianByteStream.position = position;
-			  break;
-			}
-			// Cache the littleEndianByteArrayParser for meta header elements, since the rest of the data set may be big endian
-			// and this parser will be needed later if the meta header values are to be read.
-			element.parser = dicomParser.littleEndianByteArrayParser;
-			elements[element.tag] = element;
-		}
-		 var metaHeaderDataSet = new dicomParser.DataSet(littleEndianByteStream.byteArrayParser, littleEndianByteStream.byteArray, elements);
-		 metaHeaderDataSet.warnings = littleEndianByteStream.warnings;
-		 metaHeaderDataSet.position = littleEndianByteStream.position;
-         return metaHeaderDataSet;
-	  }
-	  else
-	  {
-		  
 		  return null;
 	  }
-      
-
+      var metaHeaderDataSet = new dicomParser.DataSet(littleEndianByteStream.byteArrayParser, littleEndianByteStream.byteArray, elements);
+      metaHeaderDataSet.warnings = littleEndianByteStream.warnings;
+      metaHeaderDataSet.position = littleEndianByteStream.position;
+      return metaHeaderDataSet;
     }
 
     // This is where we actually start parsing
