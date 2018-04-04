@@ -2316,9 +2316,29 @@ var dicomParser = (function(dicomParser) {
 	  //ignore the dicom file which has no metaInforamtion
 	  if(littleEndianByteStream.position != undefined && littleEndianByteStream.position != 0)
 	  {
+		  //zssure:2018.04.04
+		 //try to parse dicom file whose header tags' transferSyntax is implicit
+		 //——that is not standard,such as dicom data gotten from Shanghai Ruijin Hospital, Philips
+		 //NO.72,SINAN ROAD,Shanghai
+		 var isExplicit=true;
+		 var position = littleEndianByteStream.position;
+		 var element = dicomParser.readDicomElementExplicit(littleEndianByteStream, warnings);
+		 if(littleEndianByteStream.position-position<=8)
+		 {
+			littleEndianByteStream.seek(-(littleEndianByteStream.position-position));
+			isExplicit = false;
+		 }
+		 //zssure:2018.04.04 end
 		 while(littleEndianByteStream.position < littleEndianByteStream.byteArray.length) {
-			var position = littleEndianByteStream.position;
-			var element = dicomParser.readDicomElementExplicit(littleEndianByteStream, warnings);
+			position = littleEndianByteStream.position;
+			//zssure:2018.04.04
+			if(!isExplicit)
+			{
+				element = dicomParser.readDicomElementImplicit(littleEndianByteStream, warnings);
+			}else{
+				element = dicomParser.readDicomElementExplicit(littleEndianByteStream, warnings);
+			}
+			//zssure:2018.04.04 end
 			if(element.tag > 'x0002ffff') {
 			  littleEndianByteStream.position = position;
 			  break;
